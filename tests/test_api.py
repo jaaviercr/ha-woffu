@@ -149,7 +149,7 @@ def test_calculate_minutes_from_open_sign_preserves_seconds():
     with patch("custom_components.woffu.api.datetime") as mocked_datetime:
         mocked_datetime.now.return_value = datetime(2026, 8, 27, 10, 30, 3)
 
-        assert api.calculate_minutes_from_signs([{"ShortTrueTime": "09:00"}]) == 90.05
+        assert api.calculate_minutes_from_signs([{"ShortTrueTime": "09:00"}]) == pytest.approx(90.05)
 
 
 def test_calculate_minutes_from_signs_preserves_sign_seconds():
