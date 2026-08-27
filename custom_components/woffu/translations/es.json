@@ -1,0 +1,59 @@
+  {
+    "entity": {
+      "sensor": {
+        "worked_time_today": {
+          "name": "Tiempo trabajado hoy"
+        }
+      },
+      "switch": {
+        "clock_in": {
+          "name": "Fichar"
+        }
+      }
+    },
+    "config": {
+      "title": "Integración Woffu",
+      "abort": {
+        "already_configured": "Esta cuenta de Woffu ya está configurada",
+        "reconfigure_successful": "Reconfiguración exitosa",
+        "reauth_successful": "Reautenticación exitosa",
+        "account_mismatch": "Las credenciales pertenecen a otra cuenta de Woffu"
+      },
+      "error": {
+        "cannot_connect": "No se pudo conectar",
+        "invalid_auth": "Autenticación inválida",
+        "unknown": "Error inesperado"
+      },
+      "step": {
+        "user": {
+          "data": {
+            "password": "Contraseña",
+            "username": "Usuario"
+          }
+        },
+        "reconfigure": {
+          "data": {
+            "password": "Contraseña",
+            "username": "Usuario"
+          }
+        },
+        "reauth_confirm": {
+          "description": "Introduce la contraseña de {username}.",
+          "data": {
+            "password": "Contraseña"
+          }
+        }
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "data": {
+            "scan_interval": "Intervalo de escaneo (segundos)"
+          },
+          "description": "Modifica tus opciones.",
+          "title": "Opciones de la integración Woffu"
+        }
+      }
+    }
+  }

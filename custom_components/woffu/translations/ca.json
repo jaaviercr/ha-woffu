@@ -1,0 +1,59 @@
+{
+  "entity": {
+    "sensor": {
+        "worked_time_today": {
+          "name": "Temps treballat avui"
+        }
+    },
+    "switch": {
+      "clock_in": {
+        "name": "Fitxar"
+      }
+    }
+  },
+  "config": {
+    "title": "Integració Woffu",
+    "abort": {
+      "already_configured": "Aquest compte de Woffu ja està configurat",
+      "reconfigure_successful": "Reconfiguració exitosa",
+      "reauth_successful": "Reautenticació exitosa",
+      "account_mismatch": "Les credencials pertanyen a un altre compte de Woffu"
+    },
+    "error": {
+      "cannot_connect": "No s'ha pogut connectar",
+      "invalid_auth": "Autenticació invàlida",
+      "unknown": "Error inesperat"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "password": "Contrasenya",
+          "username": "Usuari"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "password": "Contrasenya",
+          "username": "Usuari"
+        }
+      },
+      "reauth_confirm": {
+        "description": "Introdueix la contrasenya de {username}.",
+        "data": {
+          "password": "Contrasenya"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Interval d'escaneig (segons)"
+        },
+        "description": "Modifica les teves opcions.",
+        "title": "Opcions de la integració Woffu"
+      }
+    }
+  }
+}

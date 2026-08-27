@@ -1,0 +1,59 @@
+  {
+    "entity": {
+      "sensor": {
+        "worked_time_today": {
+          "name": "Worked time today"
+        }
+      },
+      "switch": {
+        "clock_in": {
+          "name": "Clock in"
+        }
+      }
+    },
+    "config": {
+      "title": "Woffu Integration",
+      "abort": {
+        "already_configured": "This Woffu account is already configured",
+        "reconfigure_successful": "Reconfiguration successful",
+        "reauth_successful": "Re-authentication was successful",
+        "account_mismatch": "The credentials belong to a different Woffu account"
+      },
+      "error": {
+        "cannot_connect": "Failed to connect",
+        "invalid_auth": "Invalid authentication",
+        "unknown": "Unexpected error"
+      },
+      "step": {
+        "user": {
+          "data": {
+            "password": "Password",
+            "username": "Username"
+          }
+        },
+        "reconfigure": {
+          "data": {
+            "password": "Password",
+            "username": "Username"
+          }
+        },
+        "reauth_confirm": {
+          "description": "Enter the password for {username}.",
+          "data": {
+            "password": "Password"
+          }
+        }
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "data": {
+            "scan_interval": "Scan Interval (seconds)"
+          },
+          "description": "Amend your options.",
+          "title": "Woffu Integration Options"
+        }
+      }
+    }
+  }
