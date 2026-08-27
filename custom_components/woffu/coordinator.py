@@ -30,7 +30,7 @@ class Device:
     device_type: DeviceType
     device_unique_id: str
     translation_key: str
-    state: int | bool
+    state: int | float | bool
 
 
 _LOGGER = logging.getLogger(__name__)

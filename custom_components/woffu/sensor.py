@@ -73,4 +73,4 @@ class WoffuWorkedHours(CoordinatorEntity, SensorEntity):
         """Return the hours accumulated during the current workday."""
         if self.device is None or self.device.state is None:
             return None
-        return round(self.device.state / 60, 2)
+        return self.device.state / 60

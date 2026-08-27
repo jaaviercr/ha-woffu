@@ -1,5 +1,6 @@
 """Tests for the Woffu API client."""
 
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -139,6 +140,25 @@ def test_calculate_minutes_from_signs(signs, expected):
     api = API("user", "secret")
 
     assert api.calculate_minutes_from_signs(signs) == expected
+
+
+def test_calculate_minutes_from_open_sign_preserves_seconds():
+    """An open work interval must include the current seconds."""
+    api = API("user", "secret")
+
+    with patch("custom_components.woffu.api.datetime") as mocked_datetime:
+        mocked_datetime.now.return_value = datetime(2026, 8, 27, 10, 30, 3)
+
+        assert api.calculate_minutes_from_signs([{"ShortTrueTime": "09:00"}]) == 90.05
+
+
+def test_calculate_minutes_from_signs_preserves_sign_seconds():
+    """Completed work intervals must include seconds returned by Woffu."""
+    api = API("user", "secret")
+
+    assert api.calculate_minutes_from_signs(
+        [{"ShortTrueTime": "09:00:10"}, {"ShortTrueTime": "13:30:20"}]
+    ) == pytest.approx(270 + 10 / 60)
 
 
 def test_clock_payload_carries_a_single_offset():

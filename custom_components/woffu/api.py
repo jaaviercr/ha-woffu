@@ -193,6 +193,12 @@ class API:
         self._last_signs = result
         self._last_signs_time = time()
 
+    @staticmethod
+    def _time_to_minutes(value: str) -> float:
+        """Convert a Woffu HH:MM[:SS] time value to minutes."""
+        hours, minutes, *seconds = value.split(":")
+        return int(hours) * 60 + int(minutes) + (int(seconds[0]) / 60 if seconds else 0)
+
     def calculate_minutes_from_signs(self, signs):
         total_minutes = 0
         if not signs:
@@ -205,10 +211,8 @@ class API:
                 time_in = sign_in.get("ShortTrueTime") or sign_in.get("ShortTime")
                 time_out = sign_out.get("ShortTrueTime") or sign_out.get("ShortTime")
                 if time_in and time_out:
-                    in_parts = time_in.split(":")
-                    out_parts = time_out.split(":")
-                    minutes_in = int(in_parts[0]) * 60 + int(in_parts[1])
-                    minutes_out = int(out_parts[0]) * 60 + int(out_parts[1])
+                    minutes_in = self._time_to_minutes(time_in)
+                    minutes_out = self._time_to_minutes(time_out)
                     # Si time_in > time_out, se ha pasado de día
                     if minutes_out < minutes_in:
                         # Añadimos 24h (1440 minutos) al out
@@ -218,10 +222,9 @@ class API:
                 sign_in = sorted_signs[i]
                 time_in = sign_in.get("ShortTrueTime") or sign_in.get("ShortTime")
                 if time_in:
-                    in_parts = time_in.split(":")
-                    minutes_in = int(in_parts[0]) * 60 + int(in_parts[1])
+                    minutes_in = self._time_to_minutes(time_in)
                     now = datetime.now()
-                    minutes_now = now.hour * 60 + now.minute
+                    minutes_now = now.hour * 60 + now.minute + now.second / 60
                     # Si time_in > time_out, se ha pasado de día
                     if minutes_now < minutes_in:
                         # Añadimos 24h (1440 minutos) al now
