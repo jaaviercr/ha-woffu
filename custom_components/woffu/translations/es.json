@@ -12,7 +12,6 @@
       }
     },
     "config": {
-      "title": "Integración Woffu",
       "abort": {
         "already_configured": "Esta cuenta de Woffu ya está configurada",
         "reconfigure_successful": "Reconfiguración exitosa",

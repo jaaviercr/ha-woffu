@@ -4,9 +4,9 @@
   "codeowners": ["@jaaviercr"],
   "config_flow": true,
   "documentation": "https://github.com/jaaviercr/ha-woffu/blob/main/README.md",
-  "issue_tracker": "https://github.com/jaaviercr/ha-woffu/issues",
   "integration_type": "service",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/jaaviercr/ha-woffu/issues",
   "requirements": [],
   "single_config_entry": false,
   "version": "1.0.0"
