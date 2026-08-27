@@ -97,4 +97,10 @@ Released under the [Apache License 2.0](LICENSE).
 
 Woffu is a trademark of its respective owner. This project is an independent, community-built integration and is not affiliated with, endorsed by, sponsored by, or supported by Woffu. The name is used only to describe what the integration connects to.
 
+## Trademark Legal Notices
+
+All product names, trademarks and registered trademarks in the images in this repository are property of their respective owners. All images in this repository are used by the Home Assistant project for identification purposes only.
+
+The use of these names, trademarks and brands appearing in these image files does not imply endorsement.
+
 The integration relies on the private endpoints used by the Woffu web application. Those endpoints are not a published, stable API and may change or stop working at any time. Using this integration may be subject to your agreement with Woffu and with your employer, and you are responsible for checking that. Clocking entries created through Home Assistant affect your real attendance records, so review them in Woffu. The software is provided without warranty of any kind.
