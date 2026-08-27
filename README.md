@@ -1,7 +1,7 @@
 # Woffu for Home Assistant
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jaaviercr/ha-woffu/v1.0.4/custom_components/woffu/brand/icon.png" alt="Woffu icon" width="128">
+  <img src="custom_components/woffu/brand/icon.png" alt="Woffu icon" width="128">
 </p>
 
 Custom Home Assistant integration to check and manage your [Woffu](https://woffu.com/) clock-in status from your smart home.
