@@ -57,6 +57,8 @@ Each account creates one device with the following entities:
 
 The sensor reports hours, not minutes. For example, `4.5` means four hours and thirty minutes.
 
+The calculation preserves the seconds returned by Woffu for each sign. Home Assistant stores that precision, but its standard duration display commonly shows only hours and minutes.
+
 ## How clocking works
 
 Woffu decides whether a new sign is an entry or an exit based on the signs already recorded for the day. The API does not accept an explicit direction.
