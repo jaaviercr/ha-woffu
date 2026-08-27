@@ -18,7 +18,7 @@ Custom Home Assistant integration to check and manage your [Woffu](https://woffu
 
 ## Requirements
 
-- Home Assistant 2026.3 or newer.
+- Home Assistant 2026.2 or newer.
 - A Woffu account that can log in at `gtd.woffu.com`.
 - Outbound internet access from your Home Assistant instance.
 
