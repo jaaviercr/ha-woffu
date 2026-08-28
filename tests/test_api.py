@@ -102,6 +102,51 @@ def test_invalid_json_raises_connection_error():
             api.connect()
 
 
+@pytest.mark.parametrize("payload", [[], "token"])
+def test_invalid_login_shape_raises_connection_error(payload):
+    """A login response with the wrong JSON shape is a connection error."""
+    api = API("user", "secret")
+
+    with patch(
+        "custom_components.woffu.api.requests.request",
+        return_value=FakeResponse(200, payload),
+    ):
+        with pytest.raises(APIConnectionError):
+            api.connect()
+
+
+def test_invalid_user_shape_raises_connection_error():
+    """A user response with the wrong JSON shape is a connection error."""
+    api = API("user", "secret")
+
+    with patch(
+        "custom_components.woffu.api.requests.request",
+        side_effect=[
+            FakeResponse(200, {"access_token": "token"}),
+            FakeResponse(200, []),
+        ],
+    ):
+        with pytest.raises(APIConnectionError):
+            api.get_user_id(api.get_access_token())
+
+
+@pytest.mark.parametrize("payload", [None, "signs", {"data": {}}])
+def test_invalid_signs_shape_raises_connection_error(payload):
+    """A signs response with the wrong JSON shape is a connection error."""
+    api = API("user", "secret")
+
+    with patch(
+        "custom_components.woffu.api.requests.request",
+        side_effect=[
+            FakeResponse(200, {"access_token": "token"}),
+            FakeResponse(200, {"UserId": 4242}),
+            FakeResponse(200, payload),
+        ],
+    ):
+        with pytest.raises(APIConnectionError):
+            api.get_time_worked_today(refresh_cache=True)
+
+
 def test_api_failure_does_not_report_zero_minutes():
     """A failing API must raise instead of reporting an empty workday."""
     backend = FakeWoffu(signs=[{"ShortTrueTime": "09:00"}])

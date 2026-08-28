@@ -137,8 +137,10 @@ class API:
             },
         )
         payload = self._json(response)
+        if not isinstance(payload, dict):
+            raise APIConnectionError("Woffu login response was not an object")
         access_token = payload.get("access_token")
-        if not access_token:
+        if not isinstance(access_token, str) or not access_token:
             raise APIAuthError(
                 payload.get("error_description", "Login response contained no token")
             )
@@ -158,6 +160,8 @@ class API:
             "get", f"{BASE_URL}/api/users/", headers=self.get_auth_headers(token)
         )
         user_info = self._json(response)
+        if not isinstance(user_info, dict):
+            raise APIConnectionError("Woffu user response was not an object")
         try:
             self._last_user_id = user_info["UserId"]
         except (KeyError, TypeError) as err:
@@ -174,6 +178,10 @@ class API:
             headers=self.get_auth_headers(token),
         )
         result = self._json(response)
+        if not isinstance(result, (list, dict)):
+            raise APIConnectionError("Woffu signs response was not a list or object")
+        if isinstance(result, dict) and not isinstance(result.get("data"), list):
+            raise APIConnectionError("Woffu signs response contained invalid data")
         self._update_signs_cache(result)
         return result
 

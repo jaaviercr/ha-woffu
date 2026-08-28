@@ -1,6 +1,6 @@
 """Tests for the Woffu config flow."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -12,6 +12,7 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.woffu.api import APIAuthError, APIConnectionError
 from custom_components.woffu.const import DOMAIN
+from custom_components.woffu import PLATFORMS, async_unload_entry
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -198,3 +199,14 @@ async def test_options_flow_sets_scan_interval(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_SCAN_INTERVAL] == 30
+
+
+async def test_unload_entry_unloads_all_platforms(hass: HomeAssistant) -> None:
+    """Unloading an entry delegates to all configured platforms."""
+    entry = mock_entry(hass)
+    unload_platforms = AsyncMock(return_value=True)
+    hass.config_entries.async_unload_platforms = unload_platforms
+
+    assert await async_unload_entry(hass, entry) is True
+
+    unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
