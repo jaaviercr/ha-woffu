@@ -59,6 +59,8 @@ The sensor reports hours, not minutes. For example, `4.5` means four hours and t
 
 The calculation preserves the seconds returned by Woffu for each sign. Home Assistant stores that precision, but its standard duration display commonly shows only hours and minutes.
 
+The integration rejects malformed API responses instead of treating them as an empty workday. Clocking operations are also serialized so that simultaneous commands cannot both make a decision from the same remote state.
+
 ## How clocking works
 
 Woffu decides whether a new sign is an entry or an exit based on the signs already recorded for the day. The API does not accept an explicit direction.

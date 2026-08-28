@@ -58,3 +58,18 @@ async def test_failed_clock_does_not_update_state_or_refresh(switch):
 
     coordinator.async_request_refresh.assert_not_awaited()
     assert entity.is_on is False
+
+
+async def test_consecutive_clock_commands_follow_requested_states(switch):
+    """Consecutive commands are sent in order and update the local state."""
+    entity, coordinator = switch
+
+    await entity.async_turn_on()
+    await entity.async_turn_off()
+
+    assert coordinator.api.clock_in_out.call_args_list == [
+        ((True,),),
+        ((False,),),
+    ]
+    assert coordinator.async_request_refresh.await_count == 2
+    assert entity.is_on is False

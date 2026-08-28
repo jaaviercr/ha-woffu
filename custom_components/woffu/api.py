@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 import re
+from threading import Lock
 from time import time
 
 import requests
@@ -30,38 +31,39 @@ class API:
 
     def clock_in_out(self, clock_in: bool | None = None) -> bool:
         """Clock in or out, or toggle the current state when no value is given."""
-        token = self.get_access_token()
-        user_id = self.get_user_id(token)
-        # Woffu derives the direction from the existing signs, so never sign on stale data.
-        _, current_state = self._load_signs(token, user_id, refresh_cache=True)
-        if clock_in is not None and clock_in == current_state:
-            self._clear_pending_state()
-            self._last_clocked_in_state = current_state
-            _LOGGER.debug("Skipping sign: Woffu already reports state %s", current_state)
+        with self._clock_lock:
+            token = self.get_access_token()
+            user_id = self.get_user_id(token)
+            # Woffu derives the direction from the existing signs, so never sign on stale data.
+            _, current_state = self._load_signs(token, user_id, refresh_cache=True)
+            if clock_in is not None and clock_in == current_state:
+                self._clear_pending_state()
+                self._last_clocked_in_state = current_state
+                _LOGGER.debug("Skipping sign: Woffu already reports state %s", current_state)
+                return True
+
+            now = datetime.now(timezone.utc).astimezone()
+            offset_minutes = int(now.utcoffset().total_seconds() / 60)
+            timestamp = now.replace(microsecond=0).isoformat()
+            payload = {
+                "StartDate": timestamp,
+                "EndDate": timestamp,
+                "TimezoneOffset": -offset_minutes,
+                "UserId": user_id,
+            }
+            self._request(
+                "post",
+                f"{BASE_URL}/api/svc/signs/signs",
+                headers=self.get_auth_headers(token),
+                json=payload,
+            )
+
+            new_state = clock_in if clock_in is not None else not current_state
+            self._pending_state = new_state
+            self._pending_state_time = time()
+            self._last_clocked_in_state = new_state
+            self._last_signs_time = None
             return True
-
-        now = datetime.now(timezone.utc).astimezone()
-        offset_minutes = int(now.utcoffset().total_seconds() / 60)
-        timestamp = now.replace(microsecond=0).isoformat()
-        payload = {
-            "StartDate": timestamp,
-            "EndDate": timestamp,
-            "TimezoneOffset": -offset_minutes,
-            "UserId": user_id,
-        }
-        self._request(
-            "post",
-            f"{BASE_URL}/api/svc/signs/signs",
-            headers=self.get_auth_headers(token),
-            json=payload,
-        )
-
-        new_state = clock_in if clock_in is not None else not current_state
-        self._pending_state = new_state
-        self._pending_state_time = time()
-        self._last_clocked_in_state = new_state
-        self._last_signs_time = None
-        return True
 
     def __init__(self, user: str, pwd: str) -> None:
         """Initialise."""
@@ -78,6 +80,7 @@ class API:
         self._last_user_id = None
         self._pending_state = None
         self._pending_state_time = None
+        self._clock_lock = Lock()
 
     @property
     def controller_name(self) -> str:
@@ -163,10 +166,13 @@ class API:
         if not isinstance(user_info, dict):
             raise APIConnectionError("Woffu user response was not an object")
         try:
-            self._last_user_id = user_info["UserId"]
+            user_id = user_info["UserId"]
         except (KeyError, TypeError) as err:
             raise APIConnectionError("Woffu did not return a user id") from err
-        return self._last_user_id
+        if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+            raise APIConnectionError("Woffu returned an invalid user id")
+        self._last_user_id = user_id
+        return user_id
 
     def get_signs(self, token, user_id, date, refresh_cache):
         """Return today's signs, using the cache when it is still fresh."""
@@ -182,6 +188,8 @@ class API:
             raise APIConnectionError("Woffu signs response was not a list or object")
         if isinstance(result, dict) and not isinstance(result.get("data"), list):
             raise APIConnectionError("Woffu signs response contained invalid data")
+        signs = result.get("data", []) if isinstance(result, dict) else result
+        self._validate_signs(signs)
         self._update_signs_cache(result)
         return result
 
@@ -201,10 +209,30 @@ class API:
         self._last_signs = result
         self._last_signs_time = time()
 
+    @classmethod
+    def _validate_signs(cls, signs):
+        """Validate the sign records needed to calculate worked time."""
+        for sign in signs:
+            if not isinstance(sign, dict):
+                raise APIConnectionError("Woffu returned an invalid sign")
+            sign_time = sign.get("ShortTrueTime") or sign.get("ShortTime")
+            if not isinstance(sign_time, str):
+                raise APIConnectionError("Woffu sign contained no valid time")
+            try:
+                cls._time_to_minutes(sign_time)
+            except (ValueError, TypeError) as err:
+                raise APIConnectionError("Woffu sign contained an invalid time") from err
+
     @staticmethod
     def _time_to_minutes(value: str) -> float:
         """Convert a Woffu HH:MM[:SS] time value to minutes."""
         hours, minutes, *seconds = value.split(":")
+        if len(seconds) > 1 or not 0 <= int(minutes) < 60:
+            raise ValueError("Invalid time")
+        if seconds and not 0 <= int(seconds[0]) < 60:
+            raise ValueError("Invalid time")
+        if not 0 <= int(hours) < 24:
+            raise ValueError("Invalid time")
         return int(hours) * 60 + int(minutes) + (int(seconds[0]) / 60 if seconds else 0)
 
     def calculate_minutes_from_signs(self, signs):

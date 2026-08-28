@@ -12,7 +12,8 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.woffu.api import APIAuthError, APIConnectionError
 from custom_components.woffu.const import DOMAIN
-from custom_components.woffu import PLATFORMS, async_unload_entry
+from custom_components.woffu import PLATFORMS, async_setup_entry, async_unload_entry
+from custom_components.woffu import RuntimeData
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -210,3 +211,24 @@ async def test_unload_entry_unloads_all_platforms(hass: HomeAssistant) -> None:
     assert await async_unload_entry(hass, entry) is True
 
     unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
+
+
+async def test_setup_entry_refreshes_forwards_platforms_and_stores_runtime_data(
+    hass: HomeAssistant,
+) -> None:
+    """Setup refreshes the coordinator before forwarding the platforms."""
+    entry = mock_entry(hass)
+    coordinator = AsyncMock()
+    coordinator.async_config_entry_first_refresh = AsyncMock()
+    forward_platforms = AsyncMock()
+
+    with (
+        patch("custom_components.woffu.WoffuCoordinator", return_value=coordinator),
+        patch.object(hass.config_entries, "async_forward_entry_setups", forward_platforms),
+    ):
+        assert await async_setup_entry(hass, entry) is True
+
+    coordinator.async_config_entry_first_refresh.assert_awaited_once_with()
+    forward_platforms.assert_awaited_once_with(entry, PLATFORMS)
+    assert isinstance(entry.runtime_data, RuntimeData)
+    assert entry.runtime_data.coordinator is coordinator

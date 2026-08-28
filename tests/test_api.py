@@ -1,6 +1,9 @@
 """Tests for the Woffu API client."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
+from time import sleep, time
 from unittest.mock import patch
 
 import pytest
@@ -130,6 +133,19 @@ def test_invalid_user_shape_raises_connection_error():
             api.get_user_id(api.get_access_token())
 
 
+@pytest.mark.parametrize("user_id", [None, "4242", 0, -1, True, False])
+def test_invalid_user_id_raises_connection_error(user_id):
+    """A user response with an invalid id is a connection error."""
+    api = API("user", "secret")
+
+    with patch(
+        "custom_components.woffu.api.requests.request",
+        return_value=FakeResponse(200, {"UserId": user_id}),
+    ):
+        with pytest.raises(APIConnectionError):
+            api.get_user_id("token")
+
+
 @pytest.mark.parametrize("payload", [None, "signs", {"data": {}}])
 def test_invalid_signs_shape_raises_connection_error(payload):
     """A signs response with the wrong JSON shape is a connection error."""
@@ -141,6 +157,26 @@ def test_invalid_signs_shape_raises_connection_error(payload):
             FakeResponse(200, {"access_token": "token"}),
             FakeResponse(200, {"UserId": 4242}),
             FakeResponse(200, payload),
+        ],
+    ):
+        with pytest.raises(APIConnectionError):
+            api.get_time_worked_today(refresh_cache=True)
+
+
+@pytest.mark.parametrize(
+    "signs",
+    [["invalid"], [{"ShortTrueTime": "09:60"}], [{"ShortTime": "25:00:00"}], [{}]],
+)
+def test_invalid_sign_record_raises_connection_error(signs):
+    """A malformed sign record is a connection error."""
+    api = API("user", "secret")
+
+    with patch(
+        "custom_components.woffu.api.requests.request",
+        side_effect=[
+            FakeResponse(200, {"access_token": "token"}),
+            FakeResponse(200, {"UserId": 4242}),
+            FakeResponse(200, signs),
         ],
     ):
         with pytest.raises(APIConnectionError):
@@ -218,6 +254,68 @@ def test_clock_payload_carries_a_single_offset():
     timestamp = backend.posted_signs[0]["StartDate"]
     assert timestamp.count("+") <= 1
     assert not timestamp.endswith("+02:00+02:00")
+
+
+def test_clock_payload_uses_local_timezone_offset():
+    """The clock payload contains the offset of the local timestamp."""
+    backend = FakeWoffu(signs=[])
+    api, patched = build_api(backend)
+    local_now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone(timedelta(hours=1)))
+
+    with patch("custom_components.woffu.api.datetime") as mocked_datetime:
+        mocked_datetime.now.return_value.astimezone.return_value = local_now
+        with patched:
+            api.connect()
+            api.clock_in_out(True)
+
+    payload = backend.posted_signs[0]
+    assert payload["StartDate"] == "2026-01-15T10:00:00+01:00"
+    assert payload["TimezoneOffset"] == -60
+
+
+def test_signs_url_uses_iso_date():
+    """The signs request uses the API date format."""
+    assert API._build_signs_url(4242, datetime(2026, 8, 28)) == (
+        "https://gtd.woffu.com/api/signs?userId=4242&date=2026-08-28"
+    )
+
+
+def test_clock_operations_are_serialized():
+    """A second clock operation waits for the first one to finish."""
+    api = API("user", "secret")
+    api._last_token = "token"
+    api._last_token_time = time()
+    api._last_user_id = 4242
+    first_started = Event()
+    release_first = Event()
+    active_lock = Lock()
+    active = 0
+    max_active = 0
+
+    def load_signs(*_args, **_kwargs):
+        nonlocal active, max_active
+        with active_lock:
+            active += 1
+            max_active = max(max_active, active)
+        if not first_started.is_set():
+            first_started.set()
+            release_first.wait(timeout=5)
+        with active_lock:
+            active -= 1
+        return [], False
+
+    api._load_signs = load_signs
+    api._request = lambda *_args, **_kwargs: FakeResponse(200, {})
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(api.clock_in_out, True)
+        assert first_started.wait(timeout=5)
+        second = executor.submit(api.clock_in_out, False)
+        sleep(0.05)
+        assert max_active == 1
+        release_first.set()
+        assert first.result() is True
+        assert second.result() is True
 
 
 def test_clock_out_is_skipped_when_woffu_already_reports_it():
