@@ -48,7 +48,7 @@
       "step": {
         "init": {
           "data": {
-            "scan_interval": "Scan Interval (seconds)"
+            "scan_interval": "Scan interval (minutes)"
           },
           "description": "Amend your options.",
           "title": "Woffu Integration Options"

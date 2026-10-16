@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+import json
 import logging
 import re
-from threading import Lock
 from time import time
+from typing import Any
 
-import requests
+import aiohttp
 
-from .const import DEFAULT_SCAN_INTERVAL
+from .const import DEFAULT_SCAN_INTERVAL_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,13 +31,15 @@ BASE_HEADERS = {
 class API:
     """Class API for connecting to Woffu API."""
 
-    def clock_in_out(self, clock_in: bool | None = None) -> bool:
+    async def async_clock_in_out(self, clock_in: bool | None = None) -> bool:
         """Clock in or out, or toggle the current state when no value is given."""
-        with self._clock_lock:
-            token = self.get_access_token()
-            user_id = self.get_user_id(token)
+        async with self._clock_lock:
+            token = await self.async_get_access_token()
+            user_id = await self.async_get_user_id(token)
             # Woffu derives the direction from the existing signs, so never sign on stale data.
-            _, current_state = self._load_signs(token, user_id, refresh_cache=True)
+            _, current_state = await self._load_signs(
+                token, user_id, refresh_cache=True
+            )
             if clock_in is not None and clock_in == current_state:
                 self._clear_pending_state()
                 self._last_clocked_in_state = current_state
@@ -51,11 +55,12 @@ class API:
                 "TimezoneOffset": -offset_minutes,
                 "UserId": user_id,
             }
-            self._request(
+            await self._request(
                 "post",
                 f"{BASE_URL}/api/svc/signs/signs",
                 headers=self.get_auth_headers(token),
                 json=payload,
+                parse_json=False,
             )
 
             new_state = clock_in if clock_in is not None else not current_state
@@ -65,11 +70,14 @@ class API:
             self._last_signs_time = None
             return True
 
-    def __init__(self, user: str, pwd: str) -> None:
+    def __init__(
+        self, user: str, pwd: str, session: aiohttp.ClientSession
+    ) -> None:
         """Initialise."""
         self.user = user
         self.user_in_sensor_name = re.sub(r"[.@]", "_", self.user)
         self.pwd = pwd
+        self._session = session
         self.connected: bool = False
         self._last_clocked_in_state = None
         self._last_minutes = None
@@ -80,38 +88,40 @@ class API:
         self._last_user_id = None
         self._pending_state = None
         self._pending_state_time = None
-        self._clock_lock = Lock()
+        self._clock_lock = asyncio.Lock()
 
     @property
     def controller_name(self) -> str:
         """Return the name of the controller."""
         return self.user_in_sensor_name
 
-    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+    async def _request(
+        self, method: str, url: str, *, parse_json: bool = True, **kwargs
+    ) -> Any:
         """Perform an HTTP request and translate failures into API errors."""
         try:
-            response = requests.request(
+            async with self._session.request(
                 method, url, timeout=REQUEST_TIMEOUT, **kwargs
-            )
-        except requests.RequestException as err:
+            ) as response:
+                response_text = await response.text()
+                status = response.status
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise APIConnectionError(f"Error connecting to Woffu: {err}") from err
 
-        if response.status_code in AUTH_STATUS_CODES:
-            raise APIAuthError(f"HTTP {response.status_code}: {response.text}")
-        if not response.ok:
-            raise APIConnectionError(f"HTTP {response.status_code}: {response.text}")
-        return response
-
-    def _json(self, response: requests.Response):
-        """Return the decoded body or fail with a connection error."""
+        if status in AUTH_STATUS_CODES:
+            raise APIAuthError(f"HTTP {status}: {response_text}")
+        if not 200 <= status < 300:
+            raise APIConnectionError(f"HTTP {status}: {response_text}")
+        if not parse_json or not response_text:
+            return None
         try:
-            return response.json()
+            return json.loads(response_text)
         except ValueError as err:
             raise APIConnectionError(f"Invalid JSON from Woffu: {err}") from err
 
-    def connect(self) -> bool:
+    async def async_connect(self) -> bool:
         """Connect to API and verify real credentials."""
-        self.get_access_token()
+        await self.async_get_access_token()
         self.connected = True
         return True
 
@@ -120,7 +130,7 @@ class API:
         self.connected = False
         return True
 
-    def get_access_token(self):
+    async def async_get_access_token(self) -> str:
         """Cache token for session."""
         if (
             self._last_token
@@ -129,7 +139,7 @@ class API:
         ):
             return self._last_token
 
-        response = self._request(
+        payload = await self._request(
             "post",
             f"{BASE_URL}/token",
             headers=BASE_HEADERS,
@@ -139,7 +149,6 @@ class API:
                 "password": self.pwd,
             },
         )
-        payload = self._json(response)
         if not isinstance(payload, dict):
             raise APIConnectionError("Woffu login response was not an object")
         access_token = payload.get("access_token")
@@ -155,14 +164,13 @@ class API:
         """Return the headers used for authenticated requests."""
         return {**BASE_HEADERS, "Authorization": f"Bearer {token}"}
 
-    def get_user_id(self, token):
+    async def async_get_user_id(self, token: str) -> int:
         """Return the Woffu user id, caching it for the session."""
         if self._last_user_id is not None:
             return self._last_user_id
-        response = self._request(
+        user_info = await self._request(
             "get", f"{BASE_URL}/api/users/", headers=self.get_auth_headers(token)
         )
-        user_info = self._json(response)
         if not isinstance(user_info, dict):
             raise APIConnectionError("Woffu user response was not an object")
         try:
@@ -174,16 +182,17 @@ class API:
         self._last_user_id = user_id
         return user_id
 
-    def get_signs(self, token, user_id, date, refresh_cache):
+    async def async_get_signs(
+        self, token: str, user_id: int, date: datetime, refresh_cache: bool
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """Return today's signs, using the cache when it is still fresh."""
         if self._should_use_cache(refresh_cache):
             return self._last_signs
-        response = self._request(
+        result = await self._request(
             "get",
             self._build_signs_url(user_id, date),
             headers=self.get_auth_headers(token),
         )
-        result = self._json(response)
         if not isinstance(result, (list, dict)):
             raise APIConnectionError("Woffu signs response was not a list or object")
         if isinstance(result, dict) and not isinstance(result.get("data"), list):
@@ -201,7 +210,7 @@ class API:
     def _should_use_cache(self, refresh_cache):
         now_ts = time()
         if not refresh_cache and self._last_signs is not None and self._last_signs_time is not None:
-            if now_ts - self._last_signs_time < DEFAULT_SCAN_INTERVAL:
+            if now_ts - self._last_signs_time < DEFAULT_SCAN_INTERVAL_SECONDS:
                 return True
         return False
 
@@ -268,17 +277,26 @@ class API:
                     total_minutes += minutes_now - minutes_in
         return total_minutes
 
-    def get_time_worked_today(self, refresh_cache=False):
+    async def async_get_time_worked_today(self, refresh_cache: bool = False):
         """Return today's worked minutes and store the current clock-in state."""
-        token = self.get_access_token()
-        user_id = self.get_user_id(token)
-        minutes, state = self._load_signs(token, user_id, refresh_cache)
-        self._last_clocked_in_state = self._settle_state(state)
+        minutes, _ = await self.async_get_workday_snapshot(refresh_cache)
         return minutes
 
-    def _load_signs(self, token, user_id, refresh_cache):
+    async def async_get_workday_snapshot(
+        self, refresh_cache: bool = False
+    ) -> tuple[int | float, bool]:
+        """Return worked minutes and clock-in state from the same signs response."""
+        token = await self.async_get_access_token()
+        user_id = await self.async_get_user_id(token)
+        minutes, state = await self._load_signs(token, user_id, refresh_cache)
+        self._last_clocked_in_state = self._settle_state(state)
+        return minutes, self._last_clocked_in_state
+
+    async def _load_signs(self, token, user_id, refresh_cache):
         """Return today's minutes and the state reported by Woffu."""
-        signs = self.get_signs(token, user_id, datetime.now(), refresh_cache)
+        signs = await self.async_get_signs(
+            token, user_id, datetime.now(), refresh_cache
+        )
         sign_data = signs.get("data", []) if isinstance(signs, dict) else signs
         minutes = self.calculate_minutes_from_signs(sign_data)
         self._last_minutes = minutes
@@ -300,17 +318,17 @@ class API:
         self._clear_pending_state()
         return state
 
-    def is_clocked_in(self, refresh_cache=False):
+    async def async_is_clocked_in(self, refresh_cache: bool = False):
         """Return the clock-in state, refreshing it when the cache is stale."""
         if (
             refresh_cache
             or self._last_clocked_in_state is None
             or (
                 self._last_signs_time is not None
-                and time() - self._last_signs_time > DEFAULT_SCAN_INTERVAL
+                and time() - self._last_signs_time > DEFAULT_SCAN_INTERVAL_SECONDS
             )
         ):
-            self.get_time_worked_today(refresh_cache)
+            await self.async_get_time_worked_today(refresh_cache)
         return self._last_clocked_in_state
 
 

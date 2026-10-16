@@ -42,7 +42,7 @@ Custom Home Assistant integration to check and manage your [Woffu](https://woffu
 
 To add another account, repeat the process with different credentials. Each account creates its own device and entities.
 
-Use **Configure** on the integration to change the scan interval. The default is 60 seconds and the minimum is 10 seconds.
+Use **Configure** on the integration to change the polling interval in minutes. The default and minimum are 1 minute.
 
 If your password changes, Home Assistant asks you to re-authenticate. You can also use **Reconfigure** to update the credentials yourself.
 

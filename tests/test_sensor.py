@@ -7,8 +7,6 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from custom_components.woffu.const import DOMAIN
 from custom_components.woffu.coordinator import (
-    Device,
-    DeviceType,
     WoffuAPIData,
     WoffuCoordinator,
 )
@@ -17,7 +15,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 @pytest.fixture
-def sensor(hass):
+async def sensor(hass):
     """Return a worked-hours sensor with an initial value."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -26,14 +24,12 @@ def sensor(hass):
     )
     entry.add_to_hass(hass)
     coordinator = WoffuCoordinator(hass, entry)
-    device = Device(
-        device_id=2,
-        device_type=DeviceType.TIME,
-        device_unique_id="user@example.com_worked_time_today",
-        translation_key="worked_time_today",
-        state=90,
+    coordinator.data = WoffuAPIData(
+        controller_name="user_example_com",
+        clocked_in=False,
+        worked_minutes=90,
     )
-    entity = WoffuWorkedHours(coordinator, device)
+    entity = WoffuWorkedHours(coordinator)
     entity.hass = hass
     entity.async_write_ha_state = MagicMock()
     return entity, coordinator
@@ -46,21 +42,18 @@ async def test_sensor_exposes_minutes_as_hours(sensor):
     assert entity.native_value == pytest.approx(1.5)
 
 
+async def test_sensor_uses_shared_account_metadata(sensor):
+    """The sensor exposes account-level device metadata."""
+    entity, coordinator = sensor
+
+    assert entity.device_info["identifiers"] == {(DOMAIN, coordinator.account_id)}
+    assert entity.translation_placeholders == {"user": coordinator.user}
+
+
 async def test_sensor_uses_updated_coordinator_device(sensor):
     """The sensor uses the latest value after a coordinator update."""
     entity, coordinator = sensor
-    coordinator.data = WoffuAPIData(
-        controller_name="user_example_com",
-        devices=[
-            Device(
-                device_id=2,
-                device_type=DeviceType.TIME,
-                device_unique_id="user@example.com_worked_time_today",
-                translation_key="worked_time_today",
-                state=150,
-            )
-        ],
-    )
+    coordinator.data.worked_minutes = 150
 
     entity._handle_coordinator_update()
 

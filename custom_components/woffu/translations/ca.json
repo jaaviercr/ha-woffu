@@ -48,7 +48,7 @@
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Interval d'escaneig (segons)"
+          "scan_interval": "Interval de consulta (minuts)"
         },
         "description": "Modifica les teves opcions.",
         "title": "Opcions de la integració Woffu"

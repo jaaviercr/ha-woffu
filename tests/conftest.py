@@ -1,5 +1,7 @@
 """Fixtures for the Woffu tests."""
 
+import json
+
 import pytest
 
 pytest_plugins = "pytest_homeassistant_custom_component"
@@ -14,16 +16,33 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 class FakeResponse:
     """Minimal stand-in for a requests response."""
 
-    def __init__(self, status_code=200, payload=None, text=""):
-        self.status_code = status_code
-        self.ok = status_code < 400
-        self.text = text
+    def __init__(self, status_code=200, payload=None, text=None):
+        self.status = status_code
         self._payload = payload if payload is not None else {}
+        self._text = text
 
-    def json(self):
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+    async def text(self):
         if isinstance(self._payload, Exception):
-            raise self._payload
-        return self._payload
+            return "invalid json"
+        if self._text is not None:
+            return self._text
+        return json.dumps(self._payload)
+
+
+class FakeSession:
+    """Return fake aiohttp responses for API requests."""
+
+    def __init__(self, request_handler):
+        self.request_handler = request_handler
+
+    def request(self, method, url, **kwargs):
+        return self.request_handler(method, url, **kwargs)
 
 
 class FakeWoffu:

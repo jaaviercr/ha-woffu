@@ -20,9 +20,10 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import API, APIAuthError, APIConnectionError
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, MIN_SCAN_INTERVAL
+from .const import DEFAULT_SCAN_INTERVAL_SECONDS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,10 +39,14 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
-    api = API(data[CONF_USERNAME], data[CONF_PASSWORD])
+    api = API(
+        data[CONF_USERNAME],
+        data[CONF_PASSWORD],
+        async_get_clientsession(hass),
+    )
 
     try:
-        await hass.async_add_executor_job(api.connect)
+        await api.async_connect()
     except APIAuthError as err:
         raise InvalidAuth from err
     except APIConnectionError as err:
@@ -171,17 +176,20 @@ class WoffuOptionsFlowHandler(OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Handle options flow."""
         if user_input is not None:
-            options = self.config_entry.options | user_input
+            options = self.config_entry.options | {
+                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL] * 60
+            }
             return self.async_create_entry(title="", data=options)
 
+        current_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS
+        )
         data_schema = vol.Schema(
             {
                 vol.Required(
                     CONF_SCAN_INTERVAL,
-                    default=self.config_entry.options.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                    ),
-                ): (vol.All(vol.Coerce(int), vol.Clamp(min=MIN_SCAN_INTERVAL))),
+                    default=max(1, (current_interval + 59) // 60),
+                ): (vol.All(vol.Coerce(int), vol.Clamp(min=1))),
             }
         )
 

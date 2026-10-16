@@ -1,6 +1,6 @@
 """Tests for the Woffu coordinator."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -8,8 +8,8 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.woffu.api import APIAuthError, APIConnectionError
-from custom_components.woffu.const import DOMAIN
-from custom_components.woffu.coordinator import WoffuCoordinator
+from custom_components.woffu.const import DOMAIN, MIN_SCAN_INTERVAL_SECONDS
+from custom_components.woffu.coordinator import WoffuAPIData, WoffuCoordinator
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
@@ -25,29 +25,29 @@ def config_entry(hass):
     return entry
 
 
-async def test_update_builds_switch_and_time_devices(hass, config_entry):
-    """A successful update exposes both configured device values."""
+async def test_update_builds_account_data_from_one_snapshot(hass, config_entry):
+    """One workday snapshot provides all account data."""
     coordinator = WoffuCoordinator(hass, config_entry)
     coordinator.api.connected = True
-    coordinator.get_device_value = MagicMock(side_effect=[True, 270])
+    coordinator.api.connected = True
+    coordinator.api.async_get_workday_snapshot = AsyncMock(return_value=(270, True))
 
     result = await coordinator.async_update_data()
 
-    assert result.controller_name == "user_example_com"
-    assert [(device.device_type, device.state) for device in result.devices] == [
-        ("switch", True),
-        ("time", 270),
-    ]
-    assert [device.device_unique_id for device in result.devices] == [
-        "user@example.com_clock_in",
-        "user@example.com_worked_time_today",
-    ]
+    coordinator.api.async_get_workday_snapshot.assert_awaited_once_with(True)
+    assert result == WoffuAPIData(
+        controller_name="user_example_com",
+        clocked_in=True,
+        worked_minutes=270,
+    )
 
 
 async def test_update_translates_authentication_error(hass, config_entry):
     """Authentication failures become a config-entry auth failure."""
     coordinator = WoffuCoordinator(hass, config_entry)
-    coordinator.api.connect = MagicMock(side_effect=APIAuthError("bad password"))
+    coordinator.api.async_connect = AsyncMock(
+        side_effect=APIAuthError("bad password")
+    )
 
     with pytest.raises(ConfigEntryAuthFailed):
         await coordinator.async_update_data()
@@ -56,7 +56,23 @@ async def test_update_translates_authentication_error(hass, config_entry):
 async def test_update_translates_connection_error(hass, config_entry):
     """Connection failures become an update failure."""
     coordinator = WoffuCoordinator(hass, config_entry)
-    coordinator.api.connect = MagicMock(side_effect=APIConnectionError("offline"))
+    coordinator.api.async_connect = AsyncMock(
+        side_effect=APIConnectionError("offline")
+    )
 
     with pytest.raises(UpdateFailed, match="offline"):
         await coordinator.async_update_data()
+
+
+async def test_coordinator_enforces_minimum_scan_interval(hass):
+    """Legacy options below one minute are raised to the new minimum."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"},
+        options={"scan_interval": 10},
+        unique_id="user@example.com",
+    )
+
+    coordinator = WoffuCoordinator(hass, entry)
+
+    assert coordinator.poll_interval == MIN_SCAN_INTERVAL_SECONDS

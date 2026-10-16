@@ -40,7 +40,7 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
 
     with (
-        patch("custom_components.woffu.api.API.connect", return_value=True),
+        patch("custom_components.woffu.api.API.async_connect", return_value=True),
         patch("custom_components.woffu.async_setup_entry", return_value=True),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -67,7 +67,7 @@ async def test_user_flow_reports_errors(hass: HomeAssistant, error, expected) ->
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    with patch("custom_components.woffu.api.API.connect", side_effect=error):
+    with patch("custom_components.woffu.api.API.async_connect", side_effect=error):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], CREDENTIALS
         )
@@ -84,7 +84,7 @@ async def test_user_flow_rejects_duplicate_account(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    with patch("custom_components.woffu.api.API.connect", return_value=True):
+    with patch("custom_components.woffu.api.API.async_connect", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], CREDENTIALS
         )
@@ -103,7 +103,7 @@ async def test_second_account_is_allowed(hass: HomeAssistant) -> None:
     )
 
     with (
-        patch("custom_components.woffu.api.API.connect", return_value=True),
+        patch("custom_components.woffu.api.API.async_connect", return_value=True),
         patch("custom_components.woffu.async_setup_entry", return_value=True),
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], other)
@@ -124,7 +124,7 @@ async def test_reconfigure_updates_password(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
 
     with (
-        patch("custom_components.woffu.api.API.connect", return_value=True),
+        patch("custom_components.woffu.api.API.async_connect", return_value=True),
         patch("custom_components.woffu.async_setup_entry", return_value=True),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -147,7 +147,7 @@ async def test_reconfigure_rejects_a_different_account(hass: HomeAssistant) -> N
         context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
     )
 
-    with patch("custom_components.woffu.api.API.connect", return_value=True):
+    with patch("custom_components.woffu.api.API.async_connect", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_USERNAME: "someone@example.com", CONF_PASSWORD: "secret"},
@@ -169,7 +169,7 @@ async def test_reauth_updates_password(hass: HomeAssistant) -> None:
     assert result["step_id"] == "reauth_confirm"
 
     with (
-        patch("custom_components.woffu.api.API.connect", return_value=True),
+        patch("custom_components.woffu.api.API.async_connect", return_value=True),
         patch("custom_components.woffu.async_setup_entry", return_value=True),
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -183,7 +183,7 @@ async def test_reauth_updates_password(hass: HomeAssistant) -> None:
 
 
 async def test_options_flow_sets_scan_interval(hass: HomeAssistant) -> None:
-    """The Configure button must open and store the scan interval."""
+    """The Configure button accepts minutes and stores the interval in seconds."""
     entry = mock_entry(hass)
 
     with patch("custom_components.woffu.async_setup_entry", return_value=True):
@@ -194,12 +194,12 @@ async def test_options_flow_sets_scan_interval(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
 
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_SCAN_INTERVAL: 30}
+        result["flow_id"], {CONF_SCAN_INTERVAL: 5}
     )
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_SCAN_INTERVAL] == 30
+    assert entry.options[CONF_SCAN_INTERVAL] == 300
 
 
 async def test_unload_entry_unloads_all_platforms(hass: HomeAssistant) -> None:
