@@ -26,12 +26,25 @@ jobs:
           category: integration
 
   tests:
-    name: Tests
+    name: Tests (HA ${{ matrix.ha_version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ha_version: "2026.2.0 minimum"
+            python_version: "3.13"
+            upgrade_test_dependencies: false
+          - ha_version: latest
+            python_version: "3.14"
+            upgrade_test_dependencies: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python_version }}
       - run: pip install -r requirements-test.txt
+      - name: Upgrade test helper to latest Home Assistant
+        if: matrix.upgrade_test_dependencies
+        run: pip install --upgrade pytest-homeassistant-custom-component
       - run: pytest --cov=custom_components/woffu --cov-report=term-missing
