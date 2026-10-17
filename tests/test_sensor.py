@@ -25,7 +25,6 @@ async def sensor(hass):
     entry.add_to_hass(hass)
     coordinator = WoffuCoordinator(hass, entry)
     coordinator.data = WoffuAPIData(
-        controller_name="user_example_com",
         clocked_in=False,
         worked_minutes=90,
     )

@@ -6,7 +6,6 @@ import asyncio
 from datetime import datetime, timezone
 import json
 import logging
-import re
 from time import time
 from typing import Any
 
@@ -75,7 +74,6 @@ class API:
     ) -> None:
         """Initialise."""
         self.user = user
-        self.user_in_sensor_name = re.sub(r"[.@]", "_", self.user)
         self.pwd = pwd
         self._session = session
         self.connected: bool = False
@@ -89,11 +87,6 @@ class API:
         self._pending_state = None
         self._pending_state_time = None
         self._clock_lock = asyncio.Lock()
-
-    @property
-    def controller_name(self) -> str:
-        """Return the name of the controller."""
-        return self.user_in_sensor_name
 
     async def _request(
         self, method: str, url: str, *, parse_json: bool = True, **kwargs

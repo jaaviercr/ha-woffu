@@ -29,14 +29,12 @@ async def test_update_builds_account_data_from_one_snapshot(hass, config_entry):
     """One workday snapshot provides all account data."""
     coordinator = WoffuCoordinator(hass, config_entry)
     coordinator.api.connected = True
-    coordinator.api.connected = True
     coordinator.api.async_get_workday_snapshot = AsyncMock(return_value=(270, True))
 
     result = await coordinator.async_update_data()
 
     coordinator.api.async_get_workday_snapshot.assert_awaited_once_with(True)
     assert result == WoffuAPIData(
-        controller_name="user_example_com",
         clocked_in=True,
         worked_minutes=270,
     )

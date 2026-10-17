@@ -30,7 +30,6 @@ _LOGGER = logging.getLogger(__name__)
 class WoffuAPIData:
     """Data returned by one Woffu account update."""
 
-    controller_name: str
     clocked_in: bool
     worked_minutes: int | float
 
@@ -86,7 +85,6 @@ class WoffuCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
         return WoffuAPIData(
-            controller_name=self.api.controller_name,
             clocked_in=clocked_in,
             worked_minutes=worked_minutes,
         )
