@@ -3,6 +3,12 @@
     "sensor": {
       "worked_time_today": {
         "name": "Worked time today"
+      },
+      "break_time_today": {
+        "name": "Break time today"
+      },
+      "worked_time_this_week": {
+        "name": "Worked time this week"
       }
     },
     "switch": {
@@ -48,7 +54,8 @@
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Scan interval (minutes)",
+          "weekly_refresh_interval_hours": "Weekly history refresh interval (hours)"
         },
         "description": "Amend your options.",
         "title": "Woffu Integration Options"

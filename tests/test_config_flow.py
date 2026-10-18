@@ -11,7 +11,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.woffu.api import APIAuthError, APIConnectionError
-from custom_components.woffu.const import DOMAIN
+from custom_components.woffu.const import (
+    CONF_WEEKLY_REFRESH_INTERVAL_HOURS,
+    DOMAIN,
+)
 from custom_components.woffu import PLATFORMS, async_setup_entry, async_unload_entry
 from custom_components.woffu import RuntimeData
 
@@ -183,7 +186,7 @@ async def test_reauth_updates_password(hass: HomeAssistant) -> None:
 
 
 async def test_options_flow_sets_scan_interval(hass: HomeAssistant) -> None:
-    """The Configure button accepts minutes and stores the interval in seconds."""
+    """Options accept a minute scan interval and an hourly history interval."""
     entry = mock_entry(hass)
 
     with patch("custom_components.woffu.async_setup_entry", return_value=True):
@@ -194,12 +197,17 @@ async def test_options_flow_sets_scan_interval(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
 
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_SCAN_INTERVAL: 5}
+        result["flow_id"],
+        {
+            CONF_SCAN_INTERVAL: 5,
+            CONF_WEEKLY_REFRESH_INTERVAL_HOURS: 8,
+        },
     )
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_SCAN_INTERVAL] == 300
+    assert entry.options[CONF_WEEKLY_REFRESH_INTERVAL_HOURS] == 8
 
 
 async def test_unload_entry_unloads_all_platforms(hass: HomeAssistant) -> None:

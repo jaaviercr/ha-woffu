@@ -23,7 +23,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import API, APIAuthError, APIConnectionError
-from .const import DEFAULT_SCAN_INTERVAL_SECONDS, DOMAIN
+from .const import (
+    CONF_WEEKLY_REFRESH_INTERVAL_HOURS,
+    DEFAULT_SCAN_INTERVAL_SECONDS,
+    DEFAULT_WEEKLY_REFRESH_INTERVAL_HOURS,
+    DOMAIN,
+    MIN_WEEKLY_REFRESH_INTERVAL_HOURS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -177,12 +183,19 @@ class WoffuOptionsFlowHandler(OptionsFlow):
         """Handle options flow."""
         if user_input is not None:
             options = self.config_entry.options | {
-                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL] * 60
+                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL] * 60,
+                CONF_WEEKLY_REFRESH_INTERVAL_HOURS: user_input[
+                    CONF_WEEKLY_REFRESH_INTERVAL_HOURS
+                ],
             }
             return self.async_create_entry(title="", data=options)
 
         current_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS
+        )
+        current_weekly_interval = self.config_entry.options.get(
+            CONF_WEEKLY_REFRESH_INTERVAL_HOURS,
+            DEFAULT_WEEKLY_REFRESH_INTERVAL_HOURS,
         )
         data_schema = vol.Schema(
             {
@@ -190,6 +203,18 @@ class WoffuOptionsFlowHandler(OptionsFlow):
                     CONF_SCAN_INTERVAL,
                     default=max(1, (current_interval + 59) // 60),
                 ): (vol.All(vol.Coerce(int), vol.Clamp(min=1))),
+                vol.Required(
+                    CONF_WEEKLY_REFRESH_INTERVAL_HOURS,
+                    default=max(
+                        current_weekly_interval,
+                        MIN_WEEKLY_REFRESH_INTERVAL_HOURS,
+                    ),
+                ): (
+                    vol.All(
+                        vol.Coerce(int),
+                        vol.Clamp(min=MIN_WEEKLY_REFRESH_INTERVAL_HOURS),
+                    )
+                ),
             }
         )
 

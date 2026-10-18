@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 import json
 import logging
+import math
 from time import time
 from typing import Any
 
@@ -25,6 +27,17 @@ BASE_HEADERS = {
     "User-Agent": "HomeAssistant-Woffu",
     "Accept": "application/json, text/plain, */*",
 }
+
+
+@dataclass(frozen=True)
+class WorkdaySnapshot:
+    """Derived workday values from one Woffu signs response."""
+
+    worked_minutes: int | float
+    clocked_in: bool
+    work_intervals: list[dict[str, str | None]]
+    break_minutes: int | float
+    sign_count: int
 
 
 class API:
@@ -181,9 +194,72 @@ class API:
         """Return today's signs, using the cache when it is still fresh."""
         if self._should_use_cache(refresh_cache):
             return self._last_signs
+        signs = await self._fetch_signs_for_date(token, user_id, date)
+        self._update_signs_cache(signs)
+        return signs
+
+    async def async_get_worked_minutes_for_date(self, work_date: date) -> int | float:
+        """Return completed worked minutes for a historical date."""
+        minutes = await self.async_get_worked_minutes_for_range(work_date, work_date)
+        return minutes[work_date]
+
+    async def async_get_worked_minutes_for_range(
+        self, start_date: date, end_date: date
+    ) -> dict[date, int | float]:
+        """Return Woffu's calculated worked minutes for every date in a range."""
+        if end_date < start_date:
+            raise ValueError("end_date must not be before start_date")
+
+        token = await self.async_get_access_token()
+        user_id = await self.async_get_user_id(token)
+        page_size = (end_date - start_date).days + 3
         result = await self._request(
             "get",
-            self._build_signs_url(user_id, date),
+            f"{BASE_URL}/api/users/{user_id}/diaries/presence"
+            f"?fromDate={start_date:%Y-%m-%d}&toDate={end_date:%Y-%m-%d}"
+            f"&pageIndex=0&pageSize={page_size}",
+            headers=self.get_auth_headers(token),
+        )
+        if not isinstance(result, dict) or not isinstance(result.get("Diaries"), list):
+            raise APIConnectionError("Woffu diary response contained invalid data")
+
+        minutes_by_date = {
+            start_date + timedelta(days=offset): 0
+            for offset in range((end_date - start_date).days + 1)
+        }
+        for diary in result["Diaries"]:
+            if not isinstance(diary, dict) or not isinstance(diary.get("Date"), str):
+                raise APIConnectionError("Woffu returned an invalid diary")
+            try:
+                diary_date = date.fromisoformat(diary["Date"][:10])
+            except ValueError as err:
+                raise APIConnectionError("Woffu returned an invalid diary date") from err
+            if diary_date not in minutes_by_date:
+                raise APIConnectionError(
+                    f"Woffu returned a diary outside the requested range: "
+                    f"{diary_date.isoformat()}"
+                )
+
+            worked_hours = diary.get("HoursWorked")
+            if (
+                isinstance(worked_hours, bool)
+                or not isinstance(worked_hours, (int, float))
+                or not math.isfinite(worked_hours)
+            ):
+                raise APIConnectionError(
+                    f"Woffu returned invalid worked hours for {diary_date.isoformat()}"
+                )
+            minutes_by_date[diary_date] += worked_hours * 60
+
+        return minutes_by_date
+
+    async def _fetch_signs_for_date(
+        self, token: str, user_id: int, work_date: date | datetime
+    ) -> list[dict[str, Any]]:
+        """Fetch and validate signs for one date without changing the daily cache."""
+        result = await self._request(
+            "get",
+            self._build_signs_url(user_id, work_date),
             headers=self.get_auth_headers(token),
         )
         if not isinstance(result, (list, dict)):
@@ -192,8 +268,7 @@ class API:
             raise APIConnectionError("Woffu signs response contained invalid data")
         signs = result.get("data", []) if isinstance(result, dict) else result
         self._validate_signs(signs)
-        self._update_signs_cache(result)
-        return result
+        return signs
 
     @staticmethod
     def _build_signs_url(user_id, date):
@@ -237,7 +312,9 @@ class API:
             raise ValueError("Invalid time")
         return int(hours) * 60 + int(minutes) + (int(seconds[0]) / 60 if seconds else 0)
 
-    def calculate_minutes_from_signs(self, signs):
+    def calculate_minutes_from_signs(
+        self, signs: list[dict[str, Any]], now: datetime | None = None
+    ) -> int | float:
         total_minutes = 0
         if not signs:
             return 0
@@ -261,8 +338,12 @@ class API:
                 time_in = sign_in.get("ShortTrueTime") or sign_in.get("ShortTime")
                 if time_in:
                     minutes_in = self._time_to_minutes(time_in)
-                    now = datetime.now()
-                    minutes_now = now.hour * 60 + now.minute + now.second / 60
+                    current_time = now or datetime.now()
+                    minutes_now = (
+                        current_time.hour * 60
+                        + current_time.minute
+                        + current_time.second / 60
+                    )
                     # Si time_in > time_out, se ha pasado de día
                     if minutes_now < minutes_in:
                         # Añadimos 24h (1440 minutos) al now
@@ -272,26 +353,76 @@ class API:
 
     async def async_get_time_worked_today(self, refresh_cache: bool = False):
         """Return today's worked minutes and store the current clock-in state."""
-        minutes, _ = await self.async_get_workday_snapshot(refresh_cache)
-        return minutes
+        snapshot = await self.async_get_workday_snapshot(refresh_cache)
+        return snapshot.worked_minutes
 
     async def async_get_workday_snapshot(
-        self, refresh_cache: bool = False
-    ) -> tuple[int | float, bool]:
-        """Return worked minutes and clock-in state from the same signs response."""
+        self, refresh_cache: bool = False, now: datetime | None = None
+    ) -> WorkdaySnapshot:
+        """Return derived workday values from the same signs response."""
         token = await self.async_get_access_token()
         user_id = await self.async_get_user_id(token)
-        minutes, state = await self._load_signs(token, user_id, refresh_cache)
+        minutes, state = await self._load_signs(token, user_id, refresh_cache, now)
+        signs = self._last_signs
+        sign_data = signs.get("data", []) if isinstance(signs, dict) else signs
         self._last_clocked_in_state = self._settle_state(state)
-        return minutes, self._last_clocked_in_state
+        intervals, break_minutes = self._get_work_intervals(sign_data)
+        return WorkdaySnapshot(
+            worked_minutes=minutes,
+            clocked_in=self._last_clocked_in_state,
+            work_intervals=intervals,
+            break_minutes=break_minutes,
+            sign_count=len(sign_data),
+        )
 
-    async def _load_signs(self, token, user_id, refresh_cache):
+    @classmethod
+    def _get_work_intervals(
+        cls, signs: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, str | None]], int | float]:
+        """Pair alternating signs and total breaks between completed intervals."""
+        sorted_signs = sorted(
+            signs, key=lambda sign: sign.get("TrueDate", sign.get("Date", ""))
+        )
+        intervals = []
+        for index in range(0, len(sorted_signs), 2):
+            entry = (
+                sorted_signs[index].get("ShortTrueTime")
+                or sorted_signs[index].get("ShortTime")
+            )
+            exit_sign = sorted_signs[index + 1] if index + 1 < len(sorted_signs) else None
+            exit_time = (
+                exit_sign.get("ShortTrueTime")
+                or exit_sign.get("ShortTime")
+                if exit_sign
+                else None
+            )
+            intervals.append({"entry": entry, "exit": exit_time})
+
+        break_minutes = 0
+        for index in range(1, len(sorted_signs) - 1, 2):
+            break_start = (
+                sorted_signs[index].get("ShortTrueTime")
+                or sorted_signs[index].get("ShortTime")
+            )
+            break_end = (
+                sorted_signs[index + 1].get("ShortTrueTime")
+                or sorted_signs[index + 1].get("ShortTime")
+            )
+            minutes_start = cls._time_to_minutes(break_start)
+            minutes_end = cls._time_to_minutes(break_end)
+            if minutes_end < minutes_start:
+                minutes_end += 24 * 60
+            break_minutes += minutes_end - minutes_start
+
+        return intervals, break_minutes
+
+    async def _load_signs(self, token, user_id, refresh_cache, now=None):
         """Return today's minutes and the state reported by Woffu."""
         signs = await self.async_get_signs(
-            token, user_id, datetime.now(), refresh_cache
+            token, user_id, now or datetime.now(), refresh_cache
         )
         sign_data = signs.get("data", []) if isinstance(signs, dict) else signs
-        minutes = self.calculate_minutes_from_signs(sign_data)
+        minutes = self.calculate_minutes_from_signs(sign_data, now)
         self._last_minutes = minutes
         return minutes, bool(sign_data and len(sign_data) % 2 == 1)
 

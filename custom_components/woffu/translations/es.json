@@ -3,6 +3,12 @@
       "sensor": {
         "worked_time_today": {
           "name": "Tiempo trabajado hoy"
+        },
+        "break_time_today": {
+          "name": "Descanso acumulado hoy"
+        },
+        "worked_time_this_week": {
+          "name": "Tiempo trabajado esta semana"
         }
       },
       "switch": {
@@ -48,7 +54,8 @@
       "step": {
         "init": {
           "data": {
-            "scan_interval": "Intervalo de sondeo (minutos)"
+            "scan_interval": "Intervalo de sondeo (minutos)",
+            "weekly_refresh_interval_hours": "Intervalo de actualización del historial semanal (horas)"
           },
           "description": "Modifica tus opciones.",
           "title": "Opciones de la integración Woffu"

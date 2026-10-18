@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import contextmanager, nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from time import time
 from unittest.mock import AsyncMock, patch
 
@@ -66,7 +66,104 @@ async def test_workday_snapshot_returns_minutes_and_clocked_in_state():
         await api.async_connect()
         snapshot = await api.async_get_workday_snapshot(refresh_cache=True)
 
-    assert snapshot == (270, False)
+    assert snapshot.worked_minutes == 270
+    assert snapshot.clocked_in is False
+    assert snapshot.work_intervals == [{"entry": "09:00", "exit": "13:30"}]
+    assert snapshot.break_minutes == 0
+    assert snapshot.sign_count == 2
+
+
+async def test_workday_snapshot_pairs_signs_and_totals_breaks():
+    """The snapshot pairs alternating signs and totals breaks between them."""
+    backend = FakeWoffu(
+        signs=[
+            {"ShortTrueTime": "09:00"},
+            {"ShortTrueTime": "13:00"},
+            {"ShortTrueTime": "13:30"},
+            {"ShortTrueTime": "17:00"},
+            {"ShortTrueTime": "17:15"},
+        ]
+    )
+    api, patched = build_api(backend)
+
+    with patched:
+        await api.async_connect()
+        snapshot = await api.async_get_workday_snapshot(refresh_cache=True)
+
+    assert snapshot.work_intervals == [
+        {"entry": "09:00", "exit": "13:00"},
+        {"entry": "13:30", "exit": "17:00"},
+        {"entry": "17:15", "exit": None},
+    ]
+    assert snapshot.break_minutes == 45
+    assert snapshot.sign_count == 5
+
+
+async def test_historical_range_uses_diary_hours_and_zero_fills_missing_days():
+    """Diary history returns Woffu's hours for each requested date."""
+    requested_urls = []
+
+    def request(method, url, **_kwargs):
+        if url.endswith("/token"):
+            return FakeResponse(200, {"access_token": "token"})
+        if url.endswith("/api/users/"):
+            return FakeResponse(200, {"UserId": 4242})
+        requested_urls.append(url)
+        return FakeResponse(200, {
+            "Diaries": [
+                {"Date": "2026-10-12T00:00:00.000", "HoursWorked": 0.0},
+                {"Date": "2026-10-14T00:00:00.000", "HoursWorked": 7.5},
+            ]
+        }
+        )
+
+    api = API("user", "secret", FakeSession(request))
+
+    minutes = await api.async_get_worked_minutes_for_range(
+        date(2026, 10, 12), date(2026, 10, 14)
+    )
+
+    assert minutes == {
+        date(2026, 10, 12): 0,
+        date(2026, 10, 13): 0,
+        date(2026, 10, 14): 450,
+    }
+    assert "fromDate=2026-10-12" in requested_urls[0]
+    assert "toDate=2026-10-14" in requested_urls[0]
+    assert "pageSize=5" in requested_urls[0]
+    assert api._last_signs is None
+
+
+async def test_historical_range_rejects_invalid_worked_hours():
+    """Invalid diary totals must not enter the weekly sum."""
+    api = API(
+        "user",
+        "secret",
+        FakeSession(
+            lambda _method, url, **_kwargs: (
+                FakeResponse(200, {"access_token": "token"})
+                if url.endswith("/token")
+                else FakeResponse(200, {"UserId": 4242})
+                if url.endswith("/api/users/")
+                else FakeResponse(
+                    200,
+                    {
+                        "Diaries": [
+                            {
+                                "Date": "2026-10-12T00:00:00.000",
+                                "HoursWorked": "unknown",
+                            }
+                        ]
+                    },
+                )
+            )
+        ),
+    )
+
+    with pytest.raises(APIConnectionError, match="invalid worked hours"):
+        await api.async_get_worked_minutes_for_range(
+            date(2026, 10, 12), date(2026, 10, 12)
+        )
 
 
 async def test_shared_session_fetches_workday_from_local_server(
@@ -118,7 +215,8 @@ async def test_shared_session_fetches_workday_from_local_server(
         await api.async_connect()
         snapshot = await api.async_get_workday_snapshot(refresh_cache=True)
 
-        assert snapshot == (270, False)
+        assert snapshot.worked_minutes == 270
+        assert snapshot.clocked_in is False
         assert calls == ["token", "user", "signs"]
 
 

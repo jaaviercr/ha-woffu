@@ -3,6 +3,12 @@
     "sensor": {
         "worked_time_today": {
           "name": "Temps treballat avui"
+        },
+        "break_time_today": {
+          "name": "Descans acumulat avui"
+        },
+        "worked_time_this_week": {
+          "name": "Temps treballat aquesta setmana"
         }
     },
     "switch": {
@@ -48,7 +54,8 @@
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Interval de consulta (minuts)"
+          "scan_interval": "Interval de consulta (minuts)",
+          "weekly_refresh_interval_hours": "Interval d'actualització de l'historial setmanal (hores)"
         },
         "description": "Modifica les teves opcions.",
         "title": "Opcions de la integració Woffu"

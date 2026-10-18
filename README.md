@@ -13,6 +13,8 @@ Custom Home Assistant integration to check and manage your [Woffu](https://woffu
 - Clock in and out from Home Assistant.
 - See whether you are currently clocked in.
 - Track the time worked during the current day.
+- Review today's clocking intervals and accumulated breaks.
+- Track the accumulated worked time from Monday through today.
 - Configure several Woffu accounts, each as a separate integration entry.
 - Full setup from the user interface, with English, Spanish and Catalan translations.
 
@@ -43,6 +45,7 @@ Custom Home Assistant integration to check and manage your [Woffu](https://woffu
 To add another account, repeat the process with different credentials. Each account creates its own device and entities.
 
 Use **Configure** on the integration to change the polling interval in minutes. The default and minimum are 1 minute.
+The weekly sensor refreshes historical closed days every 6 hours by default. Use **Configure** to change that interval; the minimum is 1 hour. Today's value continues to follow the regular polling interval.
 
 If your password changes, Home Assistant asks you to re-authenticate. You can also use **Reconfigure** to update the credentials yourself.
 
@@ -53,9 +56,12 @@ Each account creates one device with the following entities:
 | Entity | Type | Description |
 | --- | --- | --- |
 | Clock in | `switch` | Turn on to clock in, turn off to clock out. |
-| Worked time today | `sensor` | Hours worked during the current day, as a decimal value. |
+| Worked time today | `sensor` | Hours worked during the current day, as a decimal value. Includes `work_intervals` and `sign_count` attributes. |
+| Break time today | `sensor` | Completed breaks between clock-out and the next clock-in, in decimal hours. |
+| Worked time this week | `sensor` | Worked hours from Monday through today, with a `daily_worked_hours` breakdown. |
 
-The sensor reports hours, not minutes. For example, `4.5` means four hours and thirty minutes.
+Duration sensors report hours, not minutes. For example, `4.5` means four hours and thirty minutes. An unfinished interval appears with a `null` exit. Break time includes completed pauses only; a current, unfinished pause is not counted.
+The weekly sensor is unavailable until all closed days have been retrieved successfully. If a later refresh fails, it retains the last complete total and marks its `history_stale` attribute as `true`.
 
 The calculation preserves the seconds returned by Woffu for each sign. Home Assistant stores that precision, but its standard duration display commonly shows only hours and minutes.
 
@@ -70,7 +76,8 @@ To avoid registering the opposite of what you asked for, the integration always 
 ## Known limitations
 
 - Changes made outside Home Assistant, such as clocking out from the Woffu app, appear after the next update, so up to the configured scan interval.
-- Only clocking and worked time are supported. Requests, absences and holidays are not.
+- Weekly history uses Woffu's date-ranged diary endpoint for closed days; these endpoints may change without notice.
+- Expected schedules, workday classification, requests, absences and holidays are not yet supported.
 - Worked time is calculated from the day's signs. An unusual or manually corrected sign sequence may produce an unexpected value.
 - The integration talks to `gtd.woffu.com`. Other Woffu domains are not supported.
 
@@ -91,7 +98,7 @@ When reporting a problem, include the Home Assistant version, the integration ve
 
 - Expose clocking as a service.
 - Improve caching and add a manual refresh.
-- Add the day's full list of signs as entity attributes.
+- Read Woffu's schedule, holiday and absence data to expose expected work hours and day type.
 
 ## Credits
 

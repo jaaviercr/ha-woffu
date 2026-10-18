@@ -25,6 +25,12 @@ async def switch(hass):
     coordinator.data = WoffuAPIData(
         clocked_in=False,
         worked_minutes=0,
+        work_intervals=[],
+        break_minutes=0,
+        sign_count=0,
+        weekly_minutes=0,
+        weekly_daily_minutes={},
+        weekly_history_stale=False,
     )
     entity = WoffuSwitch(coordinator)
     entity.hass = hass
